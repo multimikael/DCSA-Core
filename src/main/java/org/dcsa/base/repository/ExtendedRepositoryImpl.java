@@ -2,7 +2,7 @@ package org.dcsa.base.repository;
 
 import io.r2dbc.spi.ColumnMetadata;
 import org.dcsa.base.model.Count;
-import org.dcsa.base.util.ExtendedRequest;
+import org.dcsa.base.extendedRequest.ExtendedRequest;
 import org.dcsa.base.util.ReflectUtility;
 import org.dcsa.exception.DatabaseException;
 import org.springframework.data.r2dbc.core.DatabaseClient;

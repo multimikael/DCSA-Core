@@ -1,12 +1,12 @@
-package org.dcsa.util;
+package org.dcsa.extendedRequest;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import io.r2dbc.spi.Row;
 import io.r2dbc.spi.RowMetadata;
-import org.dcsa.base.util.ExtendedParameters;
-import org.dcsa.base.util.ExtendedRequest;
-import org.dcsa.base.util.Join;
+import org.dcsa.base.extendedRequest.ExtendedParameters;
+import org.dcsa.base.extendedRequest.ExtendedRequest;
+import org.dcsa.base.extendedRequest.Join;
 import org.dcsa.base.util.ReflectUtility;
 import org.dcsa.exception.GetException;
 import org.dcsa.model.Event;

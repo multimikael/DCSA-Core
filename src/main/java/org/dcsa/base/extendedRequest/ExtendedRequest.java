@@ -1,8 +1,9 @@
-package org.dcsa.base.util;
+package org.dcsa.base.extendedRequest;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.r2dbc.spi.Row;
 import io.r2dbc.spi.RowMetadata;
+import org.dcsa.base.util.ReflectUtility;
 import org.dcsa.exception.GetException;
 import org.springframework.data.relational.core.mapping.Table;
 import org.springframework.http.HttpHeaders;
@@ -76,10 +77,7 @@ public class ExtendedRequest<T> {
 
     public void parseParameter(Map<String, String> params, boolean fromCursor) {
         // Reset parameters
-        sort = new Sort<>(this, extendedParameters);
-        pagination = new Pagination<>(this, extendedParameters);
-        join = new Join();
-        filter = new Filter<>(this, extendedParameters);
+        resetParameters();
 
         for (Map.Entry<String, String> entry : params.entrySet()) {
             String key = entry.getKey();
@@ -89,23 +87,46 @@ public class ExtendedRequest<T> {
         }
     }
 
+    void resetParameters() {
+        sort = new Sort<>(this, extendedParameters);
+        pagination = new Pagination<>(this, extendedParameters);
+        join = new Join();
+        filter = new Filter<T>(this, extendedParameters);
+    }
+
+    public Filter getFilter() {
+        return filter;
+    }
+
+    public Sort getSort() {
+        return sort;
+    }
+
+    public Pagination getPagination() {
+        return pagination;
+    }
+
+    public Join getJoin() {
+        return join;
+    }
+
     private void parseParameter(String key, String value, boolean fromCursor) {
         if (extendedParameters.getSortParameterName().equals(key)) {
             // Parse sorting
-            sort.parseSortParameter(value, fromCursor);
+            getSort().parseSortParameter(value, fromCursor);
         } else if (extendedParameters.getPaginationPageSizeName().equals(key)) {
             // Parse limit
-            pagination.parseLimitParameter(value, fromCursor);
+            getPagination().parseLimitParameter(value, fromCursor);
         } else if (extendedParameters.getPaginationCursorName().equals(key)) {
             // Parse cursor
             parseCursorParameter(value);
         } else if (extendedParameters.getIndexCursorName().equals(key) && fromCursor) {
             // Parse internal pagination cursor
-            pagination.parseInternalPaginationCursor(value);
+            getPagination().parseInternalPaginationCursor(value);
         } else {
             try {
                 // Parse filtering
-                filter.parseFilterParameter(key, value, fromCursor);
+                getFilter().parseFilterParameter(key, value, fromCursor);
             } catch (NoSuchFieldException noSuchFieldException) {
                 if (!doJoin(key, value, fromCursor)) {
                     throw new GetException("Filter parameter not recognized: " + key);
@@ -153,25 +174,25 @@ public class ExtendedRequest<T> {
     }
 
     public void setQueryCount(Integer count) {
-        pagination.setTotal(count);
+        getPagination().setTotal(count);
     }
 
     public String getCountQuery() {
         StringBuilder sb = new StringBuilder("select count(*) from ");
         getTableName(sb);
-        join.getJoinQueryString(sb);
-        filter.getFilterQueryString(sb);
+        getJoin().getJoinQueryString(sb);
+        getFilter().getFilterQueryString(sb);
         return sb.toString();
     }
 
     public String getQuery() {
         StringBuilder sb = new StringBuilder("select * from ");
         getTableName(sb);
-        join.getJoinQueryString(sb);
-        filter.getFilterQueryString(sb);
-        sort.getSortQueryString(sb);
-        pagination.getOffsetQueryString(sb);
-        pagination.getLimitQueryString(sb);
+        getJoin().getJoinQueryString(sb);
+        getFilter().getFilterQueryString(sb);
+        getSort().getSortQueryString(sb);
+        getPagination().getOffsetQueryString(sb);
+        getPagination().getLimitQueryString(sb);
         return sb.toString();
     }
 
@@ -235,7 +256,7 @@ public class ExtendedRequest<T> {
     }
 
     protected void addPaginationHeaders(StringBuilder exposeHeaders, HttpHeaders headers, String uri) {
-        if (pagination.getLimit() != null) {
+        if (getPagination().getLimit() != null) {
             addPaginationHeader(uri, headers, extendedParameters.getPaginationCurrentPageName(), Pagination.PageRequest.CURRENT, exposeHeaders);
             addPaginationHeader(uri, headers, extendedParameters.getPaginationFirstPageName(), Pagination.PageRequest.FIRST, exposeHeaders);
             addPaginationHeader(uri, headers, extendedParameters.getPaginationPreviousPageName(), Pagination.PageRequest.PREVIOUS, exposeHeaders);
@@ -254,18 +275,18 @@ public class ExtendedRequest<T> {
         }
     }
 
-    private String getURI(ServerHttpRequest request) {
+    protected String getURI(ServerHttpRequest request) {
         return request.getURI().getScheme() + "://" + request.getURI().getRawAuthority() + request.getURI().getRawPath();
     }
 
     private String getHeaderPageCursor(Pagination.PageRequest page) {
         StringBuilder sb = new StringBuilder();
-        if (page != null && !pagination.encodePagination(sb, page)) {
+        if (page != null && !getPagination().encodePagination(sb, page)) {
             return null;
         }
-        sort.encodeSort(sb);
-        filter.encodeFilter(sb);
-        pagination.encodeLimit(sb);
+        getSort().encodeSort(sb);
+        getFilter().encodeFilter(sb);
+        getPagination().encodeLimit(sb);
         if (page == null) {
             return sb.toString();
         }

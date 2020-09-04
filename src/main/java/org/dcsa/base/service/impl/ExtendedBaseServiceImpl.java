@@ -2,7 +2,7 @@ package org.dcsa.base.service.impl;
 
 import org.dcsa.base.model.GetId;
 import org.dcsa.base.service.ExtendedBaseService;
-import org.dcsa.base.util.ExtendedRequest;
+import org.dcsa.base.extendedRequest.ExtendedRequest;
 import reactor.core.publisher.Flux;
 
 public abstract class ExtendedBaseServiceImpl<R extends org.dcsa.base.repository.ExtendedRepository<T, I>, T extends GetId<I>, I> extends BaseServiceImpl<R, T, I> implements ExtendedBaseService<T, I> {

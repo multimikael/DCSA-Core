@@ -1,4 +1,4 @@
-package org.dcsa.base.util;
+package org.dcsa.base.extendedRequest;
 
 import org.dcsa.exception.GetException;
 
