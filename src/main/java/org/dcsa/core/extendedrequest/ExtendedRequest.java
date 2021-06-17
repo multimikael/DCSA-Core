@@ -106,7 +106,8 @@ public class ExtendedRequest<T> {
         nonFilterParameters.add(parameters.getSortParameterName());
         nonFilterParameters.add(parameters.getPaginationPageSizeName());
         nonFilterParameters.add(parameters.getPaginationCursorName());
-        nonFilterParameters.add(parameters.getIndexCursorName());
+        nonFilterParameters.add(parameters.getPrevCursorName());
+        nonFilterParameters.add(parameters.getNextCursorName());
 
         for (Map.Entry<String, List<String>> entry : params.entrySet()) {
             String key = entry.getKey();
@@ -121,7 +122,7 @@ public class ExtendedRequest<T> {
         }
 
         getQueryParameterParser().parseQueryParameter(params, nonFilterParameters::contains);
-        finishedParsingParameters();
+//        finishedParsingParameters();
     }
 
     // For sub-classes to hook into this
@@ -133,10 +134,11 @@ public class ExtendedRequest<T> {
     }
 
     public void resetParameters() {
+        System.out.println("Reset");
         sort = new Sort<>(this, getExtendedParameters());
-        pagination = new Pagination<>(this, getExtendedParameters());
-        selectDistinct = false;
         dbEntityAnalysis = this.prepareDBEntityAnalysis().build();
+        pagination = new Pagination<>(this, getExtendedParameters(), dbEntityAnalysis);
+        selectDistinct = false;
         queryParameterParser = new QueryParameterParser<>(extendedParameters, r2dbcDialect, dbEntityAnalysis);
         joinAliasInUse.clear();
     }
@@ -167,9 +169,13 @@ public class ExtendedRequest<T> {
             // Parse cursor
             parseCursorParameter(value.get(0));
             parsed = true;
-        } else if (getExtendedParameters().getIndexCursorName().equals(key) && fromCursor) {
-            // Parse internal pagination cursor
-            getPagination().parseInternalPaginationCursor(value.get(0));
+        } else if (getExtendedParameters().getPrevCursorName().equals(key) && fromCursor) {
+            // Parse internal prev cursor
+            getPagination().parseInternalPrevCursor(value.get(0));
+            parsed = true;
+        } else if (getExtendedParameters().getNextCursorName().equals(key) && fromCursor) {
+            // Parse internal next cursor
+            getPagination().parseInternalNextCursor(value.get(0));
             parsed = true;
         }
         if (parsed && value.size() != 1) {
@@ -246,8 +252,8 @@ public class ExtendedRequest<T> {
         if (selectDistinct) {
             selectBuilder = selectBuilder.distinct();
         }
-        SelectBuilder.SelectWhere selectWhere = applyJoins(pagination.applyLimitOffset(selectBuilder.from(
-                dbEntityAnalysis.getTableAndJoins().getPrimaryTable()
+        SelectBuilder.SelectWhere selectWhere = applyJoins(pagination.applyPaginationQuery(
+                selectBuilder.from(dbEntityAnalysis.getTableAndJoins().getPrimaryTable()
         )));
         Condition con = filterCondition.computeCondition(r2dbcDialect);
         if (TrueCondition.INSTANCE.equals(con)) {

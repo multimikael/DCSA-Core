@@ -126,8 +126,17 @@ public class ExtendedParameters {
     // pagination:
     //   internal
     //     cursor: |index|
-    @Value( "${pagination.internal.cursor:|Offset|}" )
-    private String indexCursorName;
+    @Value( "${pagination.internal.cursor:|prev|}" )
+    private String prevCursorName;
+
+    // Set the internal pagination parameter name to "|Offset|". It is important that this name does NOT
+    // conflict with field names. It needs to be unique!
+    // This can be changed in Application.yaml fil to "|index|" by writing:
+    // pagination:
+    //   internal
+    //     cursor: |index|
+    @Value( "${pagination.internal.cursor:|next|}" )
+    private String nextCursorName;
 
     // Set the splitter for Enum values. If multiple Enum values are specified - a list will be created by splitting
     // on the specified value.
@@ -230,8 +239,12 @@ public class ExtendedParameters {
         return encryptionKey;
     }
 
-    public String getIndexCursorName() {
-        return indexCursorName;
+    public String getPrevCursorName() {
+        return prevCursorName;
+    }
+
+    public String getNextCursorName() {
+        return nextCursorName;
     }
 
     public String getEnumSplit() {

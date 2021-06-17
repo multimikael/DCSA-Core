@@ -1,7 +1,12 @@
 package org.dcsa.core.extendedrequest;
 
 import org.dcsa.core.exception.GetException;
-import org.springframework.data.relational.core.sql.SelectBuilder;
+import org.dcsa.core.model.OrderBy;
+import org.dcsa.core.query.DBEntityAnalysis;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.relational.core.sql.*;
+
+import java.sql.SQLData;
 
 /**
  * A class to help managing pagination parameters and limiting the sql result.
@@ -26,20 +31,29 @@ public class Pagination<T> {
 
     private final ExtendedRequest<T> extendedRequest;
     private final ExtendedParameters extendedParameters;
+    private final DBEntityAnalysis<T> dbEntityAnalysis;
 
     private Integer limit;
-    private int indexCursor;
+    private String cursorValue;
+    private boolean isNextCursor;
     private int total;
 
-    public Pagination(ExtendedRequest<T> extendedRequest, ExtendedParameters extendedParameters) {
+    public Pagination(ExtendedRequest<T> extendedRequest, ExtendedParameters extendedParameters, DBEntityAnalysis<T> dbEntityAnalysis) {
         this.extendedRequest = extendedRequest;
         this.extendedParameters = extendedParameters;
-
+        this.dbEntityAnalysis = dbEntityAnalysis;
+        System.out.println("oh");
         limit = extendedParameters.getDefaultPageSize();
     }
 
-    protected void parseInternalPaginationCursor(String cursorValue) {
-        indexCursor = Integer.parseInt(cursorValue);
+    protected void parseInternalPrevCursor(String cursorValue) {
+        this.cursorValue = cursorValue;
+        isNextCursor = false;
+    }
+
+    protected void parseInternalNextCursor(String cursorValue) {
+        this.cursorValue = cursorValue;
+        isNextCursor = true;
     }
 
     protected void parseLimitParameter(String value, boolean fromCursor) {
@@ -57,84 +71,67 @@ public class Pagination<T> {
         }
     }
 
-    protected void getOffsetQueryString(StringBuilder sb) {
-        if (indexCursor != 0) {
-            sb.append(" OFFSET ").append(indexCursor);
-        }
-    }
-
     protected void getLimitQueryString(StringBuilder sb) {
         if (limit != null) {
             sb.append(" LIMIT ").append(limit);
         }
     }
 
-    @SuppressWarnings("unchecked")
-    protected <SB extends SelectBuilder.SelectLimitOffset> SB applyLimitOffset(SB t) {
-        if (limit != null && indexCursor != 0) {
-            return (SB) t.limitOffset(limit, indexCursor);
+    protected <SB extends SelectBuilder.SelectWhere & SelectBuilder.SelectLimitOffset & SelectBuilder.SelectOrdered> SB applyPaginationQuery(SB t) {
+        System.out.println(limit);
+        Column orderByColumn = null;
+        for (QueryField queryField : dbEntityAnalysis.getAllSelectableFields()) {
+            if (queryField.getCombinedModelField().isAnnotationPresent(OrderBy.class)) {
+                orderByColumn = queryField.getSelectColumn();
+            }
+        }
+        if (orderByColumn == null) {
+            throw new IllegalArgumentException("No @OrderBy");
         }
         if (limit != null) {
-            return (SB) t.limit(limit);
+            t = (SB) t.limit(limit);
         }
-        return indexCursor != 0 ? (SB) t.offset(indexCursor) : t;
+        if (cursorValue != null) {
+            if (isNextCursor) {
+                t = (SB) t.where(Conditions.isGreater(SQL.literalOf(orderByColumn.getReferenceName()), SQL.literalOf(cursorValue)))
+                        .orderBy(OrderByField.from(orderByColumn, Sort.Direction.ASC));
+            } else {
+                // SelectBuilder s = Select.builder().select(Expressions.asterisk()).from(t)
+                t = (SB) t.where(Conditions.isLess(SQL.literalOf(orderByColumn.getReferenceName()), SQL.literalOf(cursorValue)))
+                        .orderBy(OrderByField.from(orderByColumn, Sort.Direction.DESC));
+                t = Select.builder().select(Expressions.asterisk()).from(t.build())
+                        .orderBy(OrderByField.from(orderByColumn, Sort.Direction.ASC));
+            }
+        }
+        return t;
     }
 
     protected boolean encodePagination(StringBuilder sb, PageRequest page) {
-        switch (page) {
-            case CURRENT: encodeIndexCursor(sb, indexCursor); return true;
-            case NEXT: return encodeNext(sb, indexCursor + limit);
-            case PREVIOUS: return encodePrevious(sb, indexCursor - limit);
-            case FIRST: return encodeFirst(sb);
-            case LAST: return encodeLast(sb, total - limit);
-            default: return false;
-        }
+//        switch (page) {
+//            case CURRENT: encodeIndexCursor(sb, indexCursor); return true;
+//            case NEXT: return encodeNext(sb, indexCursor + limit);
+//            case PREVIOUS: return encodePrevious(sb, indexCursor - limit);
+//            case FIRST: return encodeFirst(sb);
+//            case LAST: return encodeLast(sb, total - limit);
+//            default: return false;
+//        }
+        return true;
     }
 
     private boolean encodeNext(StringBuilder sb, int nextIndex) {
-        if (nextIndex < total) {
-            encodeIndexCursor(sb, nextIndex);
-            return true;
-        } else {
-            return false;
-        }
+        return true;
     }
 
     private boolean encodePrevious(StringBuilder sb, int previousIndex) {
-        if (previousIndex > 0) {
-            encodeIndexCursor(sb, previousIndex);
-            return true;
-        } else if (previousIndex > -limit) {
-            encodeIndexCursor(sb, 0);
-            return true;
-        } else {
-            return false;
-        }
+        return true;
     }
 
     private boolean encodeFirst(StringBuilder sb) {
-        if (indexCursor != 0) {
-            encodeIndexCursor(sb, 0);
-            return true;
-        } else {
-            return false;
-        }
+        return true;
     }
 
     private boolean encodeLast(StringBuilder sb, int lastIndex) {
-        if (lastIndex > indexCursor) {
-            encodeIndexCursor(sb, lastIndex);
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    private void encodeIndexCursor(StringBuilder sb, Integer index) {
-        if (sb.length() != 0) {
-            sb.append(ExtendedRequest.PARAMETER_SPLIT);
-        }
-        sb.append(extendedParameters.getIndexCursorName()).append(INDEX_CURSOR_SPLIT).append(index);
+        return true;
     }
 
     protected void encodeLimit(StringBuilder sb) {
@@ -144,10 +141,6 @@ public class Pagination<T> {
             }
             sb.append(extendedParameters.getPaginationPageSizeName()).append(LIMIT_SPLIT).append(limit);
         }
-    }
-
-    public Integer getIndexCursor() {
-        return indexCursor;
     }
 
     public Integer getLimit() {

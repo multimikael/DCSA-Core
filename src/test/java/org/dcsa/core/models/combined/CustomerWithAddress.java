@@ -3,6 +3,7 @@ package org.dcsa.core.models.combined;
 import lombok.Data;
 import org.dcsa.core.model.JoinedWithModel;
 import org.dcsa.core.model.ModelClass;
+import org.dcsa.core.model.OrderBy;
 import org.dcsa.core.model.PrimaryModel;
 import org.dcsa.core.models.Address;
 import org.dcsa.core.models.Customer;
@@ -14,6 +15,7 @@ public class CustomerWithAddress {
 
     private Long id;
 
+    @OrderBy
     private String name;
 
     @ModelClass(Address.class)
