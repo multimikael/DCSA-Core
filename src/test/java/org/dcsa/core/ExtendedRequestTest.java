@@ -62,6 +62,16 @@ public class ExtendedRequestTest {
     }
 
     @Test
+    public void testCustomerBook2CustomerWithAddress() {
+        String baseQuery = "SELECT customer_table.customer_id AS \"customer.id\", customer_table.customer_name AS \"customer.name\", customer__delivery_address.address_id AS \"customer.deliveryAddress.addressId\", customer__delivery_address.street_name AS \"customer.deliveryAddress.address\", customer__delivery_address.city_id AS \"customer.deliveryAddress.cityId\", customer_table.delivery_address_id AS \"customer.deliveryAddressId\", customer_table.payment_address_id AS \"customer.paymentAddressId\", customer__payment_address.address_id AS \"customer.paymentAddress.addressId\", customer__payment_address.street_name AS \"customer.paymentAddress.address\", customer__payment_address.city_id AS \"customer.paymentAddress.cityId\", customer_book_table.customer_book_id AS \"id\", customer_book_table.customer_book_name AS \"name\", customer_book_table.customer_id AS \"customerId\""
+                + " FROM customer_book_table"
+                + " JOIN customer_table ON customer_book_table.customer_id = customer_table.customer_id"
+                + " JOIN address_table customer__delivery_address ON customer_table.delivery_address_id = customer__delivery_address.address_id"
+                + " JOIN address_table customer__payment_address ON customer_table.payment_address_id = customer__payment_address.address_id";
+        request(CustomerBook2CustomerWithAddress.class, extendedParameters).verify(baseQuery);
+    }
+
+    @Test
     public void testCityCustomerBook() {
         String baseQuery = "SELECT city_table.id AS \"city.id\", city_table.city_name AS \"city.name\", city_table.country_id AS \"city.countryId\", customer_table.customer_id AS \"customer.id\", customer_table.customer_name AS \"customer.name\", customer__delivery_address.address_id AS \"customer.deliveryAddress.addressId\", customer__delivery_address.street_name AS \"customer.deliveryAddress.address\", customer__delivery_address.city_id AS \"customer.deliveryAddress.cityId\", customer_table.delivery_address_id AS \"customer.deliveryAddressId\", customer_table.payment_address_id AS \"customer.paymentAddressId\", customer__payment_address.address_id AS \"customer.paymentAddress.addressId\", customer__payment_address.street_name AS \"customer.paymentAddress.address\", customer__payment_address.city_id AS \"customer.paymentAddress.cityId\", customer_book_table.city_id AS \"cityId\", customer_book_table.customer_book_id AS \"id\", customer_book_table.customer_book_name AS \"name\", customer_book_table.customer_id AS \"customerId\""
                 + " FROM customer_book_table"

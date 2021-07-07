@@ -143,7 +143,11 @@ public class DefaultDBEntityAnalysisBuilder<T> implements DBEntityAnalysis.DBEnt
             table = getTableForModel(modelType, joinAlias);
         }
 
+        loadJoinsFromAnnotations(modelType, prefix);
+
         for (Field field : modelType.getDeclaredFields()) {
+            JoinDescriptor joinDescriptor = null;
+
             if (Modifier.isStatic(field.getModifiers())) {
                 continue;
             }
@@ -222,11 +226,13 @@ public class DefaultDBEntityAnalysisBuilder<T> implements DBEntityAnalysis.DBEnt
                 String lhsColumnName = getColumnName(modelType, fromField.getName(), "lhs");
                 Column lhsColumn = Column.create(SqlIdentifier.unquoted(lhsColumnName), table);
                 String rhsColumnName = getColumnName(intoModelType, foreignKey.foreignFieldName(), "rhs");
-                Table rhsTable = getTableForModel(intoModelType, intoJoinAlias);
+                Table rhsTable = getTableForModel(intoModelType, intoJoinAlias, prefix);
                 Column rhsColumn = Column.create(SqlIdentifier.unquoted(rhsColumnName), rhsTable);
                 Join.JoinType joinType = foreignKey.joinType();
 
-                SimpleJoinDescriptor joinDescriptor = SimpleJoinDescriptor.of(joinType, lhsColumn, rhsColumn, intoModelType, joinAlias);
+
+                joinDescriptor = SimpleJoinDescriptor.of(joinType, lhsColumn, rhsColumn, intoModelType, joinAlias);
+                System.out.println(joinDescriptor.getJoinAliasId());
                 registerJoinDescriptor(joinDescriptor);
 
                 // load fields recursively with new prefix
@@ -242,8 +248,18 @@ public class DefaultDBEntityAnalysisBuilder<T> implements DBEntityAnalysis.DBEnt
             if (skipFieldRegistration != null && skipFieldRegistration.test(modelType)) {
                 continue;
             }
+            // TODO: Register joinWithModel fields
+            Class<?> modelClassForField = getPrimaryModelClass(ReflectUtility.getFieldModelClass(modelType, field));
+            String modelClassJoinAlias = prefix + ReflectUtility.getTableName(modelClassForField);
 
-            QueryField queryField = QueryFields.queryFieldFromFieldWithSelectPrefix(entityType, field, modelType, table, true, prefix);
+            JoinDescriptor descriptor = joinAlias2Descriptor.get(modelClassJoinAlias);
+            Table fieldTable;
+            if (descriptor != null) {
+                fieldTable = descriptor.getRHSTable();
+            } else {
+                fieldTable = table;
+            }
+            QueryField queryField = QueryFields.queryFieldFromFieldWithSelectPrefix(modelClassForField, field, modelType, fieldTable, true, prefix);
             registerQueryField(queryField);
         }
 
@@ -292,6 +308,17 @@ public class DefaultDBEntityAnalysisBuilder<T> implements DBEntityAnalysis.DBEnt
         }
     }
 
+    public Class<?> getPrimaryModelClass(Class<?> modelType) {
+        PrimaryModel annotation = modelType.getAnnotation(PrimaryModel.class);
+        if (annotation == null) {
+            if (modelType.isAnnotationPresent(org.springframework.data.relational.core.mapping.Table.class)) {
+                return modelType;
+            }
+            throw new IllegalArgumentException("Missing @PrimaryModel or @Table on class " + modelType.getSimpleName());
+        }
+        return annotation.value();
+    }
+
     public Class<?> getPrimaryModelClass() {
         PrimaryModel annotation = entityType.getAnnotation(PrimaryModel.class);
         if (annotation == null) {
@@ -301,6 +328,81 @@ public class DefaultDBEntityAnalysisBuilder<T> implements DBEntityAnalysis.DBEnt
             throw new IllegalArgumentException("Missing @PrimaryModel or @Table on class " + entityType.getSimpleName());
         }
         return annotation.value();
+    }
+
+    private void loadJoinsFromAnnotations(Class<?> modelType, String joinAliasPrefix) {
+        JoinedWithModel[] joinAnnotations = modelType.getAnnotationsByType(JoinedWithModel.class);
+        Class<?> primaryModelClass = modelType.isAssignableFrom(entityType) ? entityType : getPrimaryModelClass(modelType);
+        String tableName = ReflectUtility.getTableName(primaryModelClass);
+
+        if (joinAlias2Class.isEmpty()) {
+            initJoinAliasTable();
+        }
+
+        for (JoinedWithModel joinAnnotation : joinAnnotations) {
+            org.springframework.data.relational.core.sql.Join.JoinType joinType = joinAnnotation.joinType();
+            Class<?> lhsModel = joinAnnotation.lhsModel();
+            String lhsJoinAlias = joinAnnotation.lhsJoinAlias();
+            String lhsFieldName = joinAnnotation.lhsFieldName();
+            String lhsColumnName;
+            Table lhsTable;
+
+            Class<?> rhsModel = joinAnnotation.rhsModel();
+            String rhsJoinAlias = joinAnnotation.rhsJoinAlias();
+            String rhsFieldName = joinAnnotation.rhsFieldName();
+            String rhsColumnName = getColumnName(rhsModel, rhsFieldName, "rhs");
+
+            if (!lhsJoinAlias.equals("")) {
+                Class<?> lhsClassFromAlias = joinAlias2Class.get(lhsJoinAlias);
+                if (lhsClassFromAlias == null) {
+                    throw new IllegalArgumentException("Invalid @JoinWithModel on " + modelType.getSimpleName()
+                            + ": The lhsJoinAlias must use an earlier table name/alias (alias " + lhsJoinAlias + ")");
+                }
+
+                if (lhsModel == Object.class) {
+                    lhsModel = lhsClassFromAlias;
+                } else if (lhsClassFromAlias != lhsModel) {
+                    throw new IllegalArgumentException("Invalid @JoinWithModel on " + modelType.getSimpleName()
+                            + ": The lhsJoinAlias and lhsModel are both defined but they do not agree on the type - "
+                            + lhsClassFromAlias.getSimpleName() + " (via alias " + lhsJoinAlias + " ) != " + lhsModel);
+                }
+            } else if (lhsModel == Object.class) {
+                lhsModel = modelType;
+                lhsJoinAlias = tableName;
+            } else {
+                lhsJoinAlias = ReflectUtility.getTableName(lhsModel);
+            }
+            lhsJoinAlias = "alice_customer";
+
+            JoinDescriptor lhsJoinDescriptor = joinAlias2Descriptor.get(lhsJoinAlias);
+            if (lhsJoinDescriptor != null) {
+                lhsTable = lhsJoinDescriptor.getRHSTable();
+            } else {
+                lhsTable = getPrimaryModelTable();
+            }
+
+            lhsColumnName = getColumnName(lhsModel, lhsFieldName, "lhs");
+            Column lhsColumn = Column.create(SqlIdentifier.unquoted(lhsColumnName), lhsTable);
+            Table rhsTable = getTableForModel(rhsModel, rhsJoinAlias, joinAliasPrefix);
+            Column rhsColumn = Column.create(SqlIdentifier.unquoted(rhsColumnName), rhsTable);
+
+            JoinDescriptor joinDescriptor = JoinedWithModelBasedJoinDescriptor.of(joinType, lhsColumn, rhsColumn,
+                    lhsJoinAlias, joinAnnotation, rhsModel);
+            registerJoinDescriptor(joinDescriptor);
+
+            /* Fail-fast on unsupported joins */
+            switch (joinType) {
+                case JOIN:
+                case LEFT_OUTER_JOIN:
+                    break;
+                case RIGHT_OUTER_JOIN:
+                    throw new UnsupportedOperationException("Cannot generate query for " + modelType.getSimpleName()
+                            + ": Please replace RIGHT JOINs with LEFT JOINs");
+                default:
+                    /* Remember to update JoinDescriptor.apply */
+                    throw new IllegalArgumentException("Unsupported joinType: " + joinType.name() + " on " + modelType.getSimpleName());
+            }
+        }
     }
 
     private void loadJoinsFromAnnotationsOnEntityClass() {
@@ -522,6 +624,17 @@ public class DefaultDBEntityAnalysisBuilder<T> implements DBEntityAnalysis.DBEnt
         // If there are clashes between these two, selectName2DbField decides.  Removing clashes will simplify
         // the logic in the lookup for selectable fields.
         this.declaredButNotSelectable.removeAll(this.selectName2DbField.keySet());
+    }
+
+    private Table getTableForModel(Class<?> model, String alias, String prefix) {
+        String tableName = ReflectUtility.getTableName(model);
+        if (alias == null || alias.equals("")) {
+            alias = tableName;
+        }
+        if (alias.equals(tableName)) {
+            return Table.create(SqlIdentifier.unquoted(tableName)).as(SqlIdentifier.unquoted(prefix + tableName));
+        }
+        return Table.create(SqlIdentifier.unquoted(tableName)).as(SqlIdentifier.unquoted(prefix + alias));
     }
 
     private Table getTableForModel(Class<?> model, String alias) {
